@@ -1,0 +1,31 @@
+name: Build and Test
+
+on:
+  push:
+    branches: ["main", "next"]
+  pull_request:
+    branches: ["main", "next"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          architecture: x64
+          cache: true
+        
+      - name: Build application
+        run: ./run build
+
+      - name: Run tests
+        run: ./run test
+
+      

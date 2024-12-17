@@ -1,0 +1,305 @@
+basePath: /
+definitions:
+  handler.ClientConfig:
+    properties:
+      appName:
+        type: string
+      appVersion:
+        type: string
+      env:
+        type: string
+    type: object
+  handler.Response:
+    properties:
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  handler.ResponseWithPayload-handler_ClientConfig:
+    properties:
+      message:
+        type: string
+      payload:
+        $ref: '#/definitions/handler.ClientConfig'
+      success:
+        type: boolean
+    type: object
+  handler.ResponseWithPayload-repo_PublicUser:
+    properties:
+      message:
+        type: string
+      payload:
+        $ref: '#/definitions/repo.PublicUser'
+      success:
+        type: boolean
+    type: object
+  repo.PublicUser:
+    properties:
+      createdAt:
+        type: string
+      dateOfBirth:
+        type: string
+      email:
+        type: string
+      gender:
+        type: string
+      id:
+        type: integer
+      imageUrl:
+        type: string
+      role:
+        type: string
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Go API Starter is a boilerplate for building RESTful APIs in Go.
+  title: Go API Starter
+  version: 1.0.0
+paths:
+  /:
+    get:
+      responses:
+        "200":
+          description: Home page
+          schema:
+            type: html
+      summary: Home page
+  /auth/access-token:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Get access token
+      tags:
+      - Auth
+  /auth/log-in:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Email
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Password
+        in: formData
+        name: password
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Log in
+      tags:
+      - Auth
+  /auth/log-out:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Log out
+      tags:
+      - Auth
+  /auth/password:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Current password
+        in: formData
+        name: currentPassword
+        required: true
+        type: string
+      - description: New password
+        in: formData
+        name: newPassword
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Update password
+      tags:
+      - Auth
+  /auth/password/reset:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Email
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Callback URL
+        in: formData
+        name: callbackUrl
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Send reset password email
+      tags:
+      - Auth
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Token
+        in: formData
+        name: token
+        required: true
+        type: string
+      - description: New password
+        in: formData
+        name: newPassword
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Reset password
+      tags:
+      - Auth
+  /auth/sign-up:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Email
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Password
+        in: formData
+        name: password
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Sign up
+      tags:
+      - Auth
+  /auth/user:
+    delete:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Delete user
+      tags:
+      - Auth
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ResponseWithPayload-repo_PublicUser'
+      security:
+      - ApiKeyAuth: []
+      summary: Get current user
+      tags:
+      - Auth
+  /auth/verify/email:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Email
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Callback URL
+        in: formData
+        name: callbackUrl
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Send account verification email
+      tags:
+      - Auth
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Token
+        in: formData
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.Response'
+      summary: Verify email
+      tags:
+      - Auth
+  /config:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ResponseWithPayload-handler_ClientConfig'
+      summary: Get client config
+swagger: "2.0"

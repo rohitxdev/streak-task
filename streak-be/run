@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+
+# Exit on error
+set -e
+# Export all variables defined below
+set -o allexport
+
+PACKAGE_NAME=$(awk '/^module/ { print $2 }' go.mod)
+APP_VERSION="$(git describe --tags --always --dirty)"
+GO_VERSION=$(awk '/^go/ { print $2 }' go.mod)
+BASE_IMAGE_TAG=":$GO_VERSION-alpine3.20"
+ENV_FILE=${ENV_FILE:-".local/.env"}
+
+# shellcheck disable=SC1090
+[[ -r "$ENV_FILE" ]] && source "$ENV_FILE"
+
+# Disable exporting of variables after this point
+set +o allexport
+
+print() {
+    declare -A colors=(["debug"]="30" ["loading"]="30" ["info"]="37" ["success"]="32" ["warn"]="33" ["error"]="31")
+    local prefix
+    local suffix
+
+    case "$1" in
+    "debug") prefix="⚙" ;;
+    "loading")
+        prefix="⧗"
+        suffix="..."
+        ;;
+    "info") prefix="➤" ;;
+    "success") prefix="✔" ;;
+    "warn") prefix="⚠" ;;
+    "error") prefix="✗" ;;
+    esac
+
+    local text="$prefix $2$suffix"
+
+    if tput colors &>/dev/null; then
+        printf "\x1b[0;%sm%s\x1b[0m\n" "${colors[$1]}" "${text:-$1}"
+    else
+        printf "%s\n" "${text:-$1}"
+    fi
+}
+
+# Run live development server in docker
+docker_watch() {
+    local compose_file="compose.yaml"
+    docker compose -f "$compose_file" down --remove-orphans
+    docker compose -f "$compose_file" rm --force
+    docker compose -f "$compose_file" up --build
+}
+
+repo="$(echo "$PACKAGE_NAME" | cut -d '/' -f 2-)"
+readonly repo
+readonly tag="$APP_VERSION"
+readonly build_file_name="main"
+readonly build_file_path=".local/bin/$build_file_name"
+readonly image_name="$repo:$tag"
+
+docker_build() {
+    docker images | grep "$repo:$tag" >/dev/null && docker rmi "$repo:$tag" --force
+    docker buildx build --platform linux/amd64,linux/arm64 --tag "$image_name" --target production --build-arg BASE_IMAGE_TAG="$BASE_IMAGE_TAG" .
+    echo
+    print info "Image: $image_name"
+}
+
+docker_push() {
+    if echo "$tag" | grep "dirty" >/dev/null; then
+        print error "Image tag is dirty. Please commit the changes and re-build the image before pushing to the remote registry."
+        return 1
+    fi
+    if [[ -n "$DOCKERHUB_USERNAME" && -n "$DOCKERHUB_PASSWORD" ]]; then
+        docker login --username "$DOCKERHUB_USERNAME" --password-stdin <<<"$DOCKERHUB_PASSWORD"
+    else
+        docker login
+    fi
+    docker tag "$image_name" "$repo:latest"
+    docker push "$image_name"
+    docker push "$repo:latest"
+    echo
+    print info "The following images were pushed to the remote registry:
+    - $repo:$tag
+    - $repo:latest"
+}
+
+watch() {
+    local tmp_dir=".local/tmp"
+    local build_cmd="go build --ldflags=\"-X $PACKAGE_NAME/config.AppVersion=$APP_VERSION -X $PACKAGE_NAME/config.BuildType=debug\" --race -o $tmp_dir/$build_file_name  ."
+
+    print loading "Starting development server"
+    # build.kill_delay is in nanoseconds
+    air --tmp_dir="$tmp_dir" --build.cmd "$build_cmd" --build.bin "$tmp_dir/$build_file_name" --build.delay 0 --build.kill_delay 10000000000 \
+        --build.exclude_dir ".local" --build.send_interrupt true --log.main_only true
+}
+
+build() {
+    local build_cmd="CGO_ENABLED=0 go build \
+        -ldflags='-s -w -X $PACKAGE_NAME/config.AppVersion=$APP_VERSION -X $PACKAGE_NAME/config.BuildType=release -extldflags \"-static\"' \
+        --trimpath -o $build_file_path ."
+
+    print loading "Verifying modules"
+    if ! go mod verify &>/dev/null; then
+        print error "Modules verification failed"
+        return 1
+    fi
+
+    print loading "Generating OpenAPI docs"
+    if ! go generate ./...; then
+        print error "OpenAPI docs generation failed"
+        return 1
+    fi
+
+    print loading "Building app"
+    if ! eval "$build_cmd"; then
+        print error "Build failed"
+        return 1
+    fi
+
+    if file "$build_file_path" | grep "dynamically linked" >/dev/null; then
+        print error "Build binary is still dynamically linked"
+        file "$build_file_path"
+        return 1
+    fi
+
+    print success "Build generated ($APP_VERSION)"
+}
+
+start() {
+    if [[ ! -x "$build_file_path" ]]; then
+        print error "Build not found"
+        return 1
+    fi
+    "$build_file_path"
+}
+
+test() {
+    print loading "Running tests"
+    go test --race --count=2 -v ./...
+}
+
+test_cover() {
+    print loading "Running tests and generating coverage report"
+    [[ -d .tmp ]] || mkdir .tmp
+    go test --race --coverprofile=./.tmp/coverage.out ./... && go tool cover --html=./.tmp/coverage.out
+}
+
+benchmark() {
+    print loading "Running benchmarks"
+    go test --race --count=2 -v --benchmem --bench=. ./...
+}
+
+pprof() {
+    print loading "Generating pprof profile"
+    [[ -z "$PORT" ]] && print error "PORT is not set" && return 1
+    curl --insecure "https://localhost:${PORT}/debug/pprof/profile?seconds=30" >default.pgo && print success "Pprof profile generated"
+}
+
+checkpoint() {
+    read -p "This will create a WIP commit and push it to origin. Continue?" -r && go mod tidy && ! build && ! read -p "Still continue?" -r
+    read -p "Commit message (optional): " -r msg
+    git add --all
+    if ! git commit -m "${msg:-"WIP - $(date -u)"}" || ! git push; then
+        print error "Failed to create checkpoint"
+        return 1
+    fi
+
+    print success "Checkpoint created"
+}
+
+upgrade() {
+    print loading "Checking for updates"
+    if ! go get -u ./...; then
+        print error "Failed to upgrade packages"
+        return 1
+    fi
+    print success "Upgraded minor/patch versions of packages"
+    print info "To upgrade major versions, run 'go get -u <package>@<version>' for each package manually"
+}
+
+print_menu() {
+    echo "Available tasks:
+
+➤ watch        - Run live development server
+➤ build        - Build go app for production release and generate OpenAPI docs
+➤ start        - Run go app binary
+➤ docker-watch - Run live development server using docker compose
+➤ docker-build - Build the production docker image
+➤ docker-push  - Push the production docker image to remote registry
+➤ test         - Run tests (pass --coverage for coverage report)
+➤ benchmark    - Run benchmarks
+➤ checkpoint   - Create a git checkpoint and push changes to origin
+➤ pprof        - Create pprof profile
+➤ upgrade      - Upgrade dependencies
+
+Usage: $0 <task>"
+}
+
+case "$1" in
+"watch")
+    watch
+    ;;
+"build")
+    build
+    ;;
+"start")
+    start
+    ;;
+"docker-watch")
+    docker_watch
+    ;;
+"docker-build")
+    docker_build
+    ;;
+"docker-push")
+    docker_push
+    ;;
+"test")
+    if [[ "$2" == "--coverage" ]]; then
+        test_cover
+    else
+        test
+    fi
+    ;;
+"benchmark")
+    benchmark
+    ;;
+"checkpoint")
+    checkpoint
+    ;;
+"pprof")
+    pprof
+    ;;
+"upgrade")
+    upgrade
+    ;;
+*)
+    print_menu
+    ;;
+esac

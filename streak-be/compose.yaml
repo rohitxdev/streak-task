@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      target: development
+      args:
+        - BASE_IMAGE_TAG=${BASE_IMAGE_TAG}
+    volumes:
+      - .:/app
+    ports:
+      - ${PORT}:${PORT}
+    environment:
+      - ENV_FILE=/run/secrets/.env
+    secrets:
+      - .env
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+secrets:
+  .env:
+    file: .local/.env

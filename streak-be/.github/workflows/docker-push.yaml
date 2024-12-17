@@ -1,0 +1,20 @@
+name: Build and push docker image to registry
+
+on:
+  push: 
+    branches: ["main"]
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Build docker image and push to registry
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: ./run docker-build && ./run docker-push
+
+      
