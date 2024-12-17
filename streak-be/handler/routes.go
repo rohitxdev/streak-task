@@ -117,8 +117,8 @@ func dfs(current Coords, target Coords, minX int, minY int, maxX int, maxY int, 
 	}
 
 	if top.Y >= minY {
-		path = append(path, bottom)
-		return dfs(bottom, target, minX, minY, maxX, maxY, path)
+		path = append(path, top)
+		return dfs(top, target, minX, minY, maxX, maxY, path)
 	}
 
 	return path
